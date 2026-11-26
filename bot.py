@@ -3,6 +3,7 @@ import os
 import random
 from typing import Optional
 
+from aiohttp import web
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -256,9 +257,32 @@ class CasinoBot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(command_prefix="!", intents=intents)
+        self._web_runner: Optional[web.AppRunner] = None
+
+    async def _handle_root(self, request: web.Request) -> web.Response:
+        return web.Response(text="Bot dziala")
+
+    async def start_web_server(self) -> None:
+        """Uruchamia lekki serwer HTTP w tle na potrzeby healthchecka."""
+        app = web.Application()
+        app.router.add_get("/", self._handle_root)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        port = int(os.environ.get("PORT", 8080))
+        site = web.TCPSite(runner, host="0.0.0.0", port=port)
+        await site.start()
+        self._web_runner = runner
+        print(f"Serwer WWW nasłuchuje na porcie {port}.")
 
     async def setup_hook(self) -> None:
         database.init_db()
+        await self.start_web_server()
+
+    async def close(self) -> None:
+        if self._web_runner is not None:
+            await self._web_runner.cleanup()
+            self._web_runner = None
+        await super().close()
 
 
 bot = CasinoBot()
